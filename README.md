@@ -62,16 +62,6 @@ Returns:
 
 Synchronous wrapper for `process_links`.
 
-### `filtering_tuple(results, to_tuple=True)`
-
-Filter results based on whether they are tuples or not.
-
-- `results` (List): List of results to filter.
-- `to_tuple` (bool): Flag indicating whether to filter tuples or non-tuples. Default is True.
-
-Returns:
-- List: Filtered list of results.
-
 ### `result_links(links, async_func)`
 
 Apply async_func to all links concurrently.
