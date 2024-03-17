@@ -1,7 +1,23 @@
 import asyncio
 from typing import List, Callable, Any, Tuple
 
-async def filtering_tuple(results: List[Any], to_tuple: bool = True) -> List:
+
+def filtering_to_unique(resluts: list):
+    # Create a dictionary to store tuples based on the first item
+    unique_tuples_dict = {}
+
+    for idx, val in resluts:
+        if idx not in unique_tuples_dict:
+            unique_tuples_dict[idx] = (idx, val)
+        elif val is not None:
+            unique_tuples_dict[idx] = (idx, val)
+
+    # Convert the dictionary values back to a list
+    unique_tuples = list(unique_tuples_dict.values())
+    unique_list = [t[1] for t in unique_tuples]
+    return unique_list
+
+def filtering_type(results: List[Any], value_type: Any, to_type: bool = True) -> List:
     """
     Filter results based on whether they are tuples or not.
 
@@ -12,10 +28,10 @@ async def filtering_tuple(results: List[Any], to_tuple: bool = True) -> List:
     Returns:
     - List: Filtered list of results.
     """
-    if to_tuple:
-        key_func = lambda result: isinstance(result, tuple)
+    if to_type:
+        key_func = lambda result: isinstance(result, value_type)
     else:
-        key_func = lambda result: not isinstance(result, tuple)
+        key_func = lambda result: not isinstance(result, value_type)
 
     return list(filter(key_func, results))
 
@@ -31,12 +47,20 @@ async def result_links(links: List[Tuple], async_func: Callable) -> List:
     Returns:
     - List: List of results obtained from applying async_func to links.
     """
-    tasks = [async_func(link) for link in links]
+    tasks = [async_func(link[1]) for link in links]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     return results
 
 
-async def process_links(links: List, async_func: Callable, try_count: int = 5, return_results: bool = True, ignor_error: bool = False) -> List:
+async def process_links(links: List,
+                        async_func: Callable,
+                        try_count: int = 10,
+                        return_results: bool = True,
+                        ignor_error: bool = False,
+                        value_type: Any=type(None),
+                        only_successful_results: bool = False,
+                        print_error_links: bool = False
+                        ) -> List:
     """
     Apply async_func to all links, retrying for a certain number of times if errors occur.
 
@@ -53,14 +77,18 @@ async def process_links(links: List, async_func: Callable, try_count: int = 5, r
     if not (isinstance(links, list) or isinstance(links, tuple)):
         links, async_func = async_func, links
 
-    links = [(link, i) for i, link in enumerate(links)]
+    links = [(i, link) for i, link in enumerate(links)]
     all_results = []
 
     for i in range(try_count):
         results = await result_links(links, async_func)
+        all_results += [
+            (links[j][0], result)
+            for j, result in enumerate(results)
+        ]
 
         error_links = [
-            links[j] 
+            links[j]
             for j, result in enumerate(results)
             if not isinstance(result, tuple)
         ]
@@ -69,17 +97,22 @@ async def process_links(links: List, async_func: Callable, try_count: int = 5, r
             break
 
         links = error_links
-
+        if print_error_links:
+            print(links)
     if (try_count - 1 == i) and not ignor_error:
         raise Exception("\nAn error occurred during asynchronous execution\n")
 
 
-    if return_results:
-        all_results = await filtering_tuple(all_results)
-        all_results = sorted(all_results, key=lambda result: result[0])
-        return all_results
+    if not return_results:
+        return
+    all_results = sorted(all_results, key=lambda result: result[0])
+    all_results = filtering_to_unique(all_results)
+    # print(all_results)
+    if only_successful_results:
+        all_results = filtering_type(all_results, value_type)
+    return all_results
 
 
-def sync_process_links(links: List, async_func: Callable, try_count: int = 5, return_results: bool = True, ignor_error: bool = False) -> List:
+def sync_process_links(*args, **kwargs) -> List:
     """Synchronous wrapper for process_links."""
-    return asyncio.run(process_links(links, async_func, try_count, return_results, ignor_error))
+    return asyncio.run(process_links(*args, **kwargs))
