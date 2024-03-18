@@ -31,12 +31,12 @@ def filtering_type(results: List[Any], value_type: Any, to_type: bool = True) ->
     if to_type:
         key_func = lambda result: isinstance(result, value_type)
     else:
-        key_func = lambda result: not isinstance(result, value_type)
+        key_func = lambda result: not isinstance(result[1], value_type)
 
     return list(filter(key_func, results))
 
 
-async def result_links(links: List[Tuple], async_func: Callable) -> List:
+async def result_links(links: List[Tuple], async_func: Callable) -> Tuple:
     """
     Apply async_func to all links concurrently.
 
@@ -50,6 +50,37 @@ async def result_links(links: List[Tuple], async_func: Callable) -> List:
     tasks = [async_func(link[1]) for link in links]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     return results
+
+
+async def async_loop(links, async_func, try_count, print_error_links, ignor_error, value_type):
+    all_results = []
+    for i in range(try_count):
+        results = await result_links(links, async_func)
+        all_results += [
+            (links[j][0], result)
+            for j, result in enumerate(results)
+        ]
+
+        error_links = [
+            links[j]
+            for j, result in enumerate(results)
+            if not isinstance(result, tuple)
+        ]
+
+        if not error_links:
+            break
+
+        links = error_links
+        if print_error_links:
+            print(links)
+
+    if (try_count - 1 == i) and not ignor_error:
+        all_results = filtering_type(all_results, value_type, to_type=False)
+        print(all_results)
+        raise Exception("\nAn error occurred during asynchronous execution\n")
+
+    return all_results
+
 
 
 async def process_links(links: List,
@@ -80,28 +111,7 @@ async def process_links(links: List,
     links = [(i, link) for i, link in enumerate(links)]
     all_results = []
 
-    for i in range(try_count):
-        results = await result_links(links, async_func)
-        all_results += [
-            (links[j][0], result)
-            for j, result in enumerate(results)
-        ]
-
-        error_links = [
-            links[j]
-            for j, result in enumerate(results)
-            if not isinstance(result, tuple)
-        ]
-
-        if not error_links:
-            break
-
-        links = error_links
-        if print_error_links:
-            print(links)
-    if (try_count - 1 == i) and not ignor_error:
-        raise Exception("\nAn error occurred during asynchronous execution\n")
-
+    all_results = await async_loop(links, async_func, try_count, print_error_links, ignor_error, value_type)
 
     if not return_results:
         return
